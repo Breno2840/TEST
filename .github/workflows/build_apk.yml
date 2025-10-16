@@ -1,0 +1,46 @@
+name: 🚀 Build & Release APK (Flutter) 🚀
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    name: 🏗️ Build Android APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Permissão para criar release
+
+    steps:
+      - name: ⬇️ Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: 💙 Configurar Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.2'
+          cache: true
+
+      - name: 🧩 Instalar Dependências
+        run: flutter pub get
+
+      - name: ⚙️ Buildar APK de Release
+        run: flutter build apk --release
+
+      - name: 📦 Renomear APK com Build Number
+        run: |
+          BUILD_NUMBER=${{ github.run_number }}
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/app-release-$BUILD_NUMBER.apk
+
+      - name: 📝 Criar ou Atualizar Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          body: |
+            ✨ Nova versão do aplicativo gerada automaticamente pelo CI/CD.
+          draft: false          # Fica disponível imediatamente
+          prerelease: false
+          files: build/app/outputs/flutter-apk/app-release-*.apk
