@@ -20,7 +20,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   int _currentIndex = 0;
   bool _isPlaying = false;
   bool _isLoading = true;
-  bool _isProcessing = false;
+  bool _isBuffering = false; // Separado do isPlaying
   Color _dominantColor = const Color(0xFF6C63FF);
   Color _backgroundColor = const Color(0xFF0A0E27);
 
@@ -52,19 +52,40 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // Escuta o estado real do player
+    // Escuta o estado REAL do player
     _audioPlayer.playerStateStream.listen((state) {
       if (mounted) {
+        final playing = state.playing;
+        final processingState = state.processingState;
+        
         setState(() {
-          _isPlaying = state.playing;
-          if (state.playing) {
+          _isPlaying = playing;
+          _isBuffering = processingState == ProcessingState.loading || 
+                        processingState == ProcessingState.buffering;
+          
+          if (playing && processingState == ProcessingState.ready) {
             _rotationController.repeat();
-          } else {
+          } else if (!playing) {
             _rotationController.stop();
           }
         });
       }
     });
+
+    // Escuta erros
+    _audioPlayer.playbackEventStream.listen(
+      (event) {},
+      onError: (Object e, StackTrace stackTrace) {
+        print('Erro no stream: $e');
+        if (mounted) {
+          setState(() {
+            _isBuffering = false;
+            _isPlaying = false;
+          });
+          _rotationController.stop();
+        }
+      },
+    );
   }
 
   Future<void> _loadStations() async {
@@ -115,6 +136,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         }
       }
     } catch (e) {
+      print('Erro ao carregar estações: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -125,21 +147,35 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
   Future<void> _loadLastStation() async {
     if (_stations.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    final lastIndex = prefs.getInt('lastStation') ?? 0;
-    if (lastIndex >= 0 && lastIndex < _stations.length) {
-      if (mounted) {
-        setState(() {
-          _currentIndex = lastIndex;
-        });
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastIndex = prefs.getInt('lastStation') ?? 0;
+      
+      print('📻 Última estação salva: $lastIndex');
+      
+      if (lastIndex >= 0 && lastIndex < _stations.length) {
+        if (mounted) {
+          setState(() {
+            _currentIndex = lastIndex;
+          });
+        }
+        await _extractDominantColor();
+        print('✅ Estação carregada: ${_stations[lastIndex].name}');
       }
-      await _extractDominantColor();
+    } catch (e) {
+      print('❌ Erro ao carregar última estação: $e');
     }
   }
 
   Future<void> _saveLastStation() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('lastStation', _currentIndex);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('lastStation', _currentIndex);
+      print('💾 Estação salva: $_currentIndex - ${_stations[_currentIndex].name}');
+    } catch (e) {
+      print('❌ Erro ao salvar estação: $e');
+    }
   }
 
   Future<void> _extractDominantColor() async {
@@ -165,38 +201,41 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   }
 
   Future<void> _playStation() async {
-    if (_stations.isEmpty || _isProcessing) return;
-
-    setState(() {
-      _isProcessing = true;
-    });
+    if (_stations.isEmpty || _isBuffering) return;
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
     
-    if (stationUrl.isEmpty) {
-      setState(() {
-        _isProcessing = false;
-      });
-      return;
-    }
+    if (stationUrl.isEmpty) return;
+
+    setState(() {
+      _isBuffering = true;
+    });
 
     try {
+      print('🎵 Tentando tocar: ${station.name}');
+      print('🔗 URL: $stationUrl');
+      
       await _audioPlayer.stop();
       await _audioPlayer.setUrl(stationUrl);
       await _audioPlayer.play();
+      
       await _saveLastStation();
       await _extractDominantColor();
+
+      print('✅ Reprodução iniciada com sucesso!');
 
       if (mounted) {
         setState(() {
           _isPlaying = true;
-          _isProcessing = false;
+          _isBuffering = false;
         });
       }
 
       _rotationController.repeat();
     } catch (e) {
+      print('❌ Erro ao reproduzir: $e');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -211,7 +250,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         
         setState(() {
           _isPlaying = false;
-          _isProcessing = false;
+          _isBuffering = false;
         });
       }
       _rotationController.stop();
@@ -219,25 +258,29 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   }
 
   Future<void> _pauseStation() async {
-    if (_isProcessing) return;
+    if (_isBuffering) return;
 
-    setState(() {
-      _isProcessing = true;
-    });
-
-    await _audioPlayer.pause();
+    print('⏸️ Pausando rádio...');
     
-    if (mounted) {
-      setState(() {
-        _isPlaying = false;
-        _isProcessing = false;
-      });
+    try {
+      await _audioPlayer.pause();
+      
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _isBuffering = false;
+        });
+      }
+      _rotationController.stop();
+      
+      print('✅ Rádio pausada');
+    } catch (e) {
+      print('❌ Erro ao pausar: $e');
     }
-    _rotationController.stop();
   }
 
   void _nextStation() {
-    if (_currentIndex < _stations.length - 1 && !_isProcessing) {
+    if (_currentIndex < _stations.length - 1 && !_isBuffering) {
       setState(() {
         _currentIndex++;
       });
@@ -245,12 +288,13 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         _playStation();
       } else {
         _extractDominantColor();
+        _saveLastStation();
       }
     }
   }
 
   void _previousStation() {
-    if (_currentIndex > 0 && !_isProcessing) {
+    if (_currentIndex > 0 && !_isBuffering) {
       setState(() {
         _currentIndex--;
       });
@@ -258,6 +302,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         _playStation();
       } else {
         _extractDominantColor();
+        _saveLastStation();
       }
     }
   }
@@ -276,6 +321,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
               _playStation();
             } else {
               _extractDominantColor();
+              _saveLastStation();
             }
           },
         ),
@@ -519,7 +565,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                           ),
                         ),
                       ),
-                      if (_isProcessing)
+                      if (_isBuffering)
                         Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
@@ -581,7 +627,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                 ),
               ),
               const SizedBox(height: 12),
-              if (_isPlaying && !_isProcessing)
+              if (_isPlaying && !_isBuffering)
                 AnimatedBuilder(
                   animation: _pulseController,
                   builder: (context, child) {
@@ -629,13 +675,13 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                   children: [
                     _buildMaterialYouButton(
                       icon: Icons.skip_previous_rounded,
-                      onPressed: _currentIndex > 0 && !_isProcessing ? _previousStation : null,
+                      onPressed: _currentIndex > 0 && !_isBuffering ? _previousStation : null,
                       size: 68,
                     ),
                     _buildMainPlayButton(),
                     _buildMaterialYouButton(
                       icon: Icons.skip_next_rounded,
-                      onPressed: _currentIndex < _stations.length - 1 && !_isProcessing ? _nextStation : null,
+                      onPressed: _currentIndex < _stations.length - 1 && !_isBuffering ? _nextStation : null,
                       size: 68,
                     ),
                   ],
@@ -739,15 +785,19 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Widget _buildMainPlayButton() {
     return GestureDetector(
       onTapDown: (_) {
-        _buttonScaleController.reverse();
+        if (!_isBuffering) {
+          _buttonScaleController.reverse();
+        }
       },
       onTapUp: (_) {
-        _buttonScaleController.forward();
+        if (!_isBuffering) {
+          _buttonScaleController.forward();
+        }
       },
       onTapCancel: () {
         _buttonScaleController.forward();
       },
-      onTap: _isProcessing 
+      onTap: _isBuffering 
           ? null 
           : (_isPlaying ? _pauseStation : _playStation),
       child: ScaleTransition(
@@ -782,7 +832,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
               ),
             ],
           ),
-          child: _isProcessing
+          child: _isBuffering
               ? Padding(
                   padding: const EdgeInsets.all(25),
                   child: CircularProgressIndicator(
