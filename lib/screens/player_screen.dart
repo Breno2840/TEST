@@ -20,11 +20,13 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   int _currentIndex = 0;
   bool _isPlaying = false;
   bool _isLoading = true;
+  bool _isProcessing = false;
   Color _dominantColor = const Color(0xFF6C63FF);
   Color _backgroundColor = const Color(0xFF0A0E27);
 
   late AnimationController _rotationController;
   late AnimationController _pulseController;
+  late AnimationController _buttonScaleController;
 
   @override
   void initState() {
@@ -39,8 +41,29 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       vsync: this,
     )..repeat(reverse: true);
 
+    _buttonScaleController = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+      lowerBound: 0.95,
+      upperBound: 1.0,
+    )..value = 1.0;
+
     _loadStations().then((_) {
       _loadLastStation();
+    });
+
+    // Escuta o estado real do player
+    _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+          if (state.playing) {
+            _rotationController.repeat();
+          } else {
+            _rotationController.stop();
+          }
+        });
+      }
     });
   }
 
@@ -78,19 +101,25 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
           }
         }
         
-        setState(() {
-          _stations = loadedStations;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _stations = loadedStations;
+            _isLoading = false;
+          });
+        }
       } else {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -99,9 +128,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     final prefs = await SharedPreferences.getInstance();
     final lastIndex = prefs.getInt('lastStation') ?? 0;
     if (lastIndex >= 0 && lastIndex < _stations.length) {
-      setState(() {
-        _currentIndex = lastIndex;
-      });
+      if (mounted) {
+        setState(() {
+          _currentIndex = lastIndex;
+        });
+      }
+      await _extractDominantColor();
     }
   }
 
@@ -121,22 +153,33 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         maximumColorCount: 20,
       );
 
-      setState(() {
-        _dominantColor = paletteGenerator.dominantColor?.color ?? const Color(0xFF6C63FF);
-        _backgroundColor = Color.lerp(_dominantColor, Colors.black, 0.85)!;
-      });
+      if (mounted) {
+        setState(() {
+          _dominantColor = paletteGenerator.dominantColor?.color ?? const Color(0xFF6C63FF);
+          _backgroundColor = Color.lerp(_dominantColor, Colors.black, 0.85)!;
+        });
+      }
     } catch (e) {
       print('Error extracting color: $e');
     }
   }
 
   Future<void> _playStation() async {
-    if (_stations.isEmpty) return;
+    if (_stations.isEmpty || _isProcessing) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
     
-    if (stationUrl.isEmpty) return;
+    if (stationUrl.isEmpty) {
+      setState(() {
+        _isProcessing = false;
+      });
+      return;
+    }
 
     try {
       await _audioPlayer.stop();
@@ -145,56 +188,76 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       await _saveLastStation();
       await _extractDominantColor();
 
-      setState(() {
-        _isPlaying = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isPlaying = true;
+          _isProcessing = false;
+        });
+      }
 
       _rotationController.repeat();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao reproduzir ${station.name}'),
-            backgroundColor: Colors.red,
+            content: Text('Não foi possível conectar à ${station.name}'),
+            backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
           ),
         );
+        
+        setState(() {
+          _isPlaying = false;
+          _isProcessing = false;
+        });
       }
-      
-      setState(() {
-        _isPlaying = false;
-      });
       _rotationController.stop();
     }
   }
 
   Future<void> _pauseStation() async {
-    await _audioPlayer.pause();
+    if (_isProcessing) return;
+
     setState(() {
-      _isPlaying = false;
+      _isProcessing = true;
     });
+
+    await _audioPlayer.pause();
+    
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+        _isProcessing = false;
+      });
+    }
     _rotationController.stop();
   }
 
   void _nextStation() {
-    if (_currentIndex < _stations.length - 1) {
+    if (_currentIndex < _stations.length - 1 && !_isProcessing) {
       setState(() {
         _currentIndex++;
       });
       if (_isPlaying) {
         _playStation();
+      } else {
+        _extractDominantColor();
       }
     }
   }
 
   void _previousStation() {
-    if (_currentIndex > 0) {
+    if (_currentIndex > 0 && !_isProcessing) {
       setState(() {
         _currentIndex--;
       });
       if (_isPlaying) {
         _playStation();
+      } else {
+        _extractDominantColor();
       }
     }
   }
@@ -211,6 +274,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
             });
             if (_isPlaying) {
               _playStation();
+            } else {
+              _extractDominantColor();
             }
           },
         ),
@@ -231,6 +296,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     _audioPlayer.dispose();
     _rotationController.dispose();
     _pulseController.dispose();
+    _buttonScaleController.dispose();
     super.dispose();
   }
 
@@ -349,22 +415,18 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.white.withOpacity(0.15),
-                            Colors.white.withOpacity(0.05),
-                          ],
-                        ),
+                        color: _dominantColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(25),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: _dominantColor.withOpacity(0.3),
+                          width: 1.5,
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.radio, size: 20),
-                          SizedBox(width: 8),
-                          Text(
+                          Icon(Icons.radio, size: 20, color: _dominantColor),
+                          const SizedBox(width: 8),
+                          const Text(
                             'Radio Player',
                             style: TextStyle(
                               fontSize: 16,
@@ -377,15 +439,20 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                     ),
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: _dominantColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: _dominantColor.withOpacity(0.3),
+                          width: 1.5,
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Text(
                         '${_currentIndex + 1}/${_stations.length}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
+                          color: _dominantColor,
                         ),
                       ),
                     ),
@@ -452,6 +519,19 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                           ),
                         ),
                       ),
+                      if (_isProcessing)
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withOpacity(0.6),
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: _dominantColor,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -459,44 +539,80 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
               const SizedBox(height: 50),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  _stations[_currentIndex].name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2,
-                  ),
+                child: Column(
+                  children: [
+                    Text(
+                      _stations[_currentIndex].name,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (_stations[_currentIndex].location != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.location_on_rounded,
+                            size: 18,
+                            color: _dominantColor.withOpacity(0.8),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _stations[_currentIndex].location!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Colors.white.withOpacity(0.7),
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
-              if (_isPlaying)
+              if (_isPlaying && !_isProcessing)
                 AnimatedBuilder(
                   animation: _pulseController,
                   builder: (context, child) {
                     return Opacity(
                       opacity: 0.5 + (_pulseController.value * 0.5),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         decoration: BoxDecoration(
-                          color: _dominantColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
+                          color: _dominantColor.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: _dominantColor.withOpacity(0.4),
+                            width: 1.5,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.graphic_eq,
+                              Icons.graphic_eq_rounded,
                               color: _dominantColor,
-                              size: 16,
+                              size: 18,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 10),
                             Text(
                               'Tocando agora',
                               style: TextStyle(
                                 color: _dominantColor,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
                               ),
                             ),
                           ],
@@ -507,71 +623,64 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                 ),
               const Spacer(),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildModernControlButton(
+                    _buildMaterialYouButton(
                       icon: Icons.skip_previous_rounded,
-                      onPressed: _currentIndex > 0 ? _previousStation : null,
-                      size: 60,
+                      onPressed: _currentIndex > 0 && !_isProcessing ? _previousStation : null,
+                      size: 68,
                     ),
-                    GestureDetector(
-                      onTap: _isPlaying ? _pauseStation : _playStation,
-                      child: Container(
-                        width: 85,
-                        height: 85,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              _dominantColor,
-                              _dominantColor.withOpacity(0.7),
-                            ],
-                          ),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: _dominantColor.withOpacity(0.5),
-                              blurRadius: 25,
-                              spreadRadius: 3,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          size: 45,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    _buildModernControlButton(
+                    _buildMainPlayButton(),
+                    _buildMaterialYouButton(
                       icon: Icons.skip_next_rounded,
-                      onPressed: _currentIndex < _stations.length - 1 ? _nextStation : null,
-                      size: 60,
+                      onPressed: _currentIndex < _stations.length - 1 && !_isProcessing ? _nextStation : null,
+                      size: 68,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 35),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: ElevatedButton.icon(
-                  onPressed: _showStationsList,
-                  icon: const Icon(Icons.list_rounded, size: 22),
-                  label: const Text(
-                    'Ver todas as estações',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.15),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showStationsList,
+                    borderRadius: BorderRadius.circular(32),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
+                      decoration: BoxDecoration(
+                        color: _dominantColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(32),
+                        border: Border.all(
+                          color: _dominantColor.withOpacity(0.4),
+                          width: 2,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.queue_music_rounded,
+                            size: 24,
+                            color: _dominantColor,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Ver todas as estações',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _dominantColor,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    elevation: 0,
                   ),
                 ),
               ),
@@ -583,33 +692,110 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     );
   }
 
-  Widget _buildModernControlButton({
+  Widget _buildMaterialYouButton({
     required IconData icon,
     required VoidCallback? onPressed,
     required double size,
   }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.15),
-            Colors.white.withOpacity(0.05),
-          ],
-        ),
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
+    final isEnabled = onPressed != null;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: isEnabled 
+                ? _dominantColor.withOpacity(0.25)
+                : Colors.white.withOpacity(0.05),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isEnabled 
+                  ? _dominantColor.withOpacity(0.5)
+                  : Colors.white.withOpacity(0.1),
+              width: 2.5,
+            ),
+            boxShadow: isEnabled ? [
+              BoxShadow(
+                color: _dominantColor.withOpacity(0.3),
+                blurRadius: 15,
+                spreadRadius: 1,
+              ),
+            ] : [],
+          ),
+          child: Icon(
+            icon,
+            size: size * 0.45,
+            color: isEnabled ? _dominantColor : Colors.white.withOpacity(0.3),
+          ),
         ),
       ),
-      child: IconButton(
-        icon: Icon(icon, size: size * 0.5),
-        onPressed: onPressed,
-        color: onPressed != null ? Colors.white : Colors.white.withOpacity(0.3),
+    );
+  }
+
+  Widget _buildMainPlayButton() {
+    return GestureDetector(
+      onTapDown: (_) {
+        _buttonScaleController.reverse();
+      },
+      onTapUp: (_) {
+        _buttonScaleController.forward();
+      },
+      onTapCancel: () {
+        _buttonScaleController.forward();
+      },
+      onTap: _isProcessing 
+          ? null 
+          : (_isPlaying ? _pauseStation : _playStation),
+      child: ScaleTransition(
+        scale: _buttonScaleController,
+        child: Container(
+          width: 95,
+          height: 95,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _dominantColor,
+                _dominantColor.withOpacity(0.8),
+              ],
+            ),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _dominantColor.withOpacity(0.5),
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _dominantColor.withOpacity(0.6),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+              BoxShadow(
+                color: _dominantColor.withOpacity(0.3),
+                blurRadius: 60,
+                spreadRadius: 10,
+              ),
+            ],
+          ),
+          child: _isProcessing
+              ? Padding(
+                  padding: const EdgeInsets.all(25),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 3.5,
+                  ),
+                )
+              : Icon(
+                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  size: 50,
+                  color: Colors.white,
+                ),
+        ),
       ),
     );
   }
