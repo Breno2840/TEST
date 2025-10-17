@@ -24,6 +24,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Color _dominantColor = const Color(0xFF6C63FF);
   Color _backgroundColor = const Color(0xFF0A0E27);
 
+  // Nova flag para controlar se estamos parando o áudio
+  bool _isStopping = false;
+
   late AnimationController _rotationController;
   late AnimationController _pulseController;
   late AnimationController _buttonScaleController;
@@ -54,15 +57,18 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
-      
+
+      // Ignorar atualizações se estivermos no processo de parar
+      if (_isStopping) return;
+
       final playing = state.playing;
       final processingState = state.processingState;
-      
+
       setState(() {
         _isPlaying = playing;
-        _isBuffering = processingState == ProcessingState.loading || 
+        _isBuffering = processingState == ProcessingState.loading ||
                       processingState == ProcessingState.buffering;
-        
+
         if (playing && processingState == ProcessingState.ready) {
           if (!_rotationController.isAnimating) {
             _rotationController.repeat();
@@ -101,9 +107,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-        
+
         List<RadioStation> loadedStations = [];
-        
+
         if (data is List) {
           loadedStations = data
               .where((station) => station['ativo'] == true)
@@ -122,7 +128,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
             }
           }
         }
-        
+
         if (mounted) {
           setState(() {
             _stations = loadedStations;
@@ -147,11 +153,11 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
   Future<void> _loadLastStation() async {
     if (_stations.isEmpty) return;
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastIndex = prefs.getInt('lastStation') ?? 0;
-      
+
       if (lastIndex >= 0 && lastIndex < _stations.length) {
         if (mounted) {
           setState(() {
@@ -201,7 +207,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
-    
+
     if (stationUrl.isEmpty) return;
 
     setState(() {
@@ -213,7 +219,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       await _audioPlayer.stop();
       await _audioPlayer.setUrl(stationUrl);
       await _audioPlayer.play();
-      
+
       await _saveLastStation();
       await _extractDominantColor();
 
@@ -237,7 +243,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
             duration: const Duration(seconds: 2),
           ),
         );
-        
+
         setState(() {
           _isPlaying = false;
           _isBuffering = false;
@@ -247,9 +253,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     }
   }
 
-  // ✅ CORREÇÃO AQUI:
+  // ✅ NOVA VERSÃO CORRIGIDA
   Future<void> _stopStation() async {
-    if (_isBuffering) return;
+    if (_isBuffering || _isStopping) return;
+
+    // Ativar a flag para impedir atualizações do playerStateStream
+    _isStopping = true;
 
     // Parar a animação imediatamente
     _rotationController.stop();
@@ -265,7 +274,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       setState(() {
         _isPlaying = false;
         _isBuffering = false;
+        // Desativar a flag
+        _isStopping = false;
       });
+    } else {
+      // Se o widget não estiver mais montado, ainda precisamos desativar a flag
+      _isStopping = false;
     }
   }
 
