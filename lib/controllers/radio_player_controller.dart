@@ -27,7 +27,6 @@ class RadioPlayerController extends ChangeNotifier {
 
   RadioStation? get currentStation => stations.isNotEmpty ? stations[currentIndex] : null;
 
-  // Construtor que recebe o TickerProvider da tela
   RadioPlayerController({required TickerProvider vsync}) {
     rotationController = AnimationController(duration: const Duration(seconds: 10), vsync: vsync);
     pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: vsync)..repeat(reverse: true);
@@ -61,9 +60,38 @@ class RadioPlayerController extends ChangeNotifier {
     });
   }
 
+  // --- LÓGICA PRINCIPAL CORRIGIDA ---
+
   Future<void> togglePlayPause() async {
     if (isBuffering) return;
-    isPlaying ? await _stopStation() : await _playStation();
+
+    // 1. Inverte o estado da UI imediatamente
+    isPlaying = !isPlaying;
+
+    // 2. Sincroniza as animações com o novo estado
+    if (isPlaying) {
+      rotationController.repeat();
+    } else {
+      rotationController.stop();
+    }
+    
+    // 3. Notifica a UI para mudar o ícone e aplicar a animação AGORA
+    notifyListeners();
+
+    // 4. Executa a ação de áudio em segundo plano
+    try {
+      if (isPlaying) {
+        await _playStation();
+      } else {
+        await _stopStation();
+      }
+    } catch (e) {
+      // Se algo deu errado, desfaz o estado
+      print("Erro ao tocar/parar. Desfazendo estado.");
+      isPlaying = !isPlaying; // Reverte para o estado anterior
+      rotationController.stop();
+      notifyListeners();
+    }
   }
 
   Future<void> _playStation() async {
@@ -75,11 +103,10 @@ class RadioPlayerController extends ChangeNotifier {
     try {
       await audioPlayer.setUrl(currentStation!.streamUrl);
       await audioPlayer.play();
-      isPlaying = true;
-      rotationController.repeat();
     } catch (e) {
       print("Erro ao tocar estação: $e");
-      isPlaying = false;
+      // Lança o erro para ser pego no togglePlayPause e reverter o estado
+      throw e; 
     } finally {
       isBuffering = false;
       notifyListeners();
@@ -88,10 +115,9 @@ class RadioPlayerController extends ChangeNotifier {
 
   Future<void> _stopStation() async {
     await audioPlayer.stop();
-    isPlaying = false;
-    rotationController.stop();
-    notifyListeners();
   }
+  
+  // --- FIM DA CORREÇÃO ---
 
   void nextStation() => _changeStation(currentIndex + 1);
   void previousStation() => _changeStation(currentIndex - 1);
@@ -101,14 +127,21 @@ class RadioPlayerController extends ChangeNotifier {
     if (newIndex < 0 || newIndex >= stations.length || isBuffering) return;
 
     currentIndex = newIndex;
-    notifyListeners();
+    
+    if(isPlaying) {
+      // Se já estava tocando, para a música e animação antes de mudar
+      await _stopStation();
+      rotationController.stop();
+      isPlaying = false;
+    }
+
+    notifyListeners(); // Mostra a nova arte do álbum
 
     await extractDominantColor();
     await _storageService.saveLastStationIndex(currentIndex);
 
-    if (isPlaying) {
-      await _playStation();
-    }
+    // Opcional: Se quiser que comece a tocar automaticamente ao mudar de estação
+    // await togglePlayPause();
   }
 
   Future<void> extractDominantColor() async {
