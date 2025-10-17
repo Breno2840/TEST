@@ -247,22 +247,28 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     }
   }
 
+  // ✅ CORREÇÃO AQUI:
   Future<void> _stopStation() async {
     if (_isBuffering) return;
 
-    setState(() {
-      _isPlaying = false;
-      _isBuffering = false;
-    });
-    
+    // Parar a animação imediatamente
     _rotationController.stop();
-    
+
     try {
       await _audioPlayer.stop();
     } catch (e) {
       print('Erro ao parar: $e');
     }
+
+    // Atualizar o estado após o áudio ser realmente parado
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+        _isBuffering = false;
+      });
+    }
   }
+
 
   Future<void> _togglePlayPause() async {
     if (_isBuffering) return;
