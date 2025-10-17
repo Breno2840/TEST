@@ -52,22 +52,17 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // Escuta o estado do player de forma mais precisa
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
       
       final playing = state.playing;
       final processingState = state.processingState;
       
-      print('🔊 Player State - Playing: $playing, ProcessingState: $processingState');
-      
-      // Atualiza o estado imediatamente
       setState(() {
         _isPlaying = playing;
         _isBuffering = processingState == ProcessingState.loading || 
                       processingState == ProcessingState.buffering;
         
-        // Controla a rotação do disco
         if (playing && processingState == ProcessingState.ready) {
           if (!_rotationController.isAnimating) {
             _rotationController.repeat();
@@ -80,11 +75,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       });
     });
 
-    // Escuta erros
     _audioPlayer.playbackEventStream.listen(
       (event) {},
       onError: (Object e, StackTrace stackTrace) {
-        print('❌ Erro no stream: $e');
         if (mounted) {
           setState(() {
             _isBuffering = false;
@@ -144,7 +137,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         }
       }
     } catch (e) {
-      print('Erro ao carregar estações: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -160,8 +152,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       final prefs = await SharedPreferences.getInstance();
       final lastIndex = prefs.getInt('lastStation') ?? 0;
       
-      print('📻 Última estação salva: $lastIndex');
-      
       if (lastIndex >= 0 && lastIndex < _stations.length) {
         if (mounted) {
           setState(() {
@@ -169,10 +159,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
           });
         }
         await _extractDominantColor();
-        print('✅ Estação carregada: ${_stations[lastIndex].name}');
       }
     } catch (e) {
-      print('❌ Erro ao carregar última estação: $e');
+      print('Erro ao carregar última estação: $e');
     }
   }
 
@@ -180,9 +169,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('lastStation', _currentIndex);
-      print('💾 Estação salva: $_currentIndex - ${_stations[_currentIndex].name}');
     } catch (e) {
-      print('❌ Erro ao salvar estação: $e');
+      print('Erro ao salvar estação: $e');
     }
   }
 
@@ -222,17 +210,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     });
 
     try {
-      print('🎵 Tentando tocar: ${station.name}');
-      print('🔗 URL: $stationUrl');
-      
       await _audioPlayer.stop();
       await _audioPlayer.setUrl(stationUrl);
       await _audioPlayer.play();
       
       await _saveLastStation();
       await _extractDominantColor();
-
-      print('✅ Reprodução iniciada com sucesso!');
 
       if (mounted) {
         setState(() {
@@ -243,8 +226,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
       _rotationController.repeat();
     } catch (e) {
-      print('❌ Erro ao reproduzir: $e');
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -269,22 +250,17 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Future<void> _stopStation() async {
     if (_isBuffering) return;
 
-    print('⏹️ Parando rádio...');
-    
-    // ATUALIZA A UI IMEDIATAMENTE ANTES DE PARAR
     setState(() {
       _isPlaying = false;
       _isBuffering = false;
     });
     
-    // Para a rotação imediatamente
     _rotationController.stop();
     
     try {
       await _audioPlayer.stop();
-      print('✅ Rádio parada');
     } catch (e) {
-      print('❌ Erro ao parar: $e');
+      print('Erro ao parar: $e');
     }
   }
 
@@ -292,10 +268,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     if (_isBuffering) return;
 
     if (_isPlaying) {
-      // Se está tocando, PARA completamente
       await _stopStation();
     } else {
-      // Se está parado, inicia
       await _playStation();
     }
   }
@@ -462,11 +436,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            _backgroundColor,
-            const Color(0xFF0A0E27),
-            Colors.black,
-          ],
+          colors: [_backgroundColor, const Color(0xFF0A0E27), Colors.black],
         ),
       ),
       child: Scaffold(
@@ -484,23 +454,13 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                       decoration: BoxDecoration(
                         color: _dominantColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(25),
-                        border: Border.all(
-                          color: _dominantColor.withOpacity(0.3),
-                          width: 1.5,
-                        ),
+                        border: Border.all(color: _dominantColor.withOpacity(0.3), width: 1.5),
                       ),
                       child: Row(
                         children: [
                           Icon(Icons.radio, size: 20, color: _dominantColor),
                           const SizedBox(width: 8),
-                          const Text(
-                            'Radio Player',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                          const Text('Radio Player', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                         ],
                       ),
                     ),
@@ -508,20 +468,10 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                       decoration: BoxDecoration(
                         color: _dominantColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: _dominantColor.withOpacity(0.3),
-                          width: 1.5,
-                        ),
+                        border: Border.all(color: _dominantColor.withOpacity(0.3), width: 1.5),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Text(
-                        '${_currentIndex + 1}/${_stations.length}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _dominantColor,
-                        ),
-                      ),
+                      child: Text('${_currentIndex + 1}/${_stations.length}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _dominantColor)),
                     ),
                   ],
                 ),
@@ -530,74 +480,35 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
               AnimatedBuilder(
                 animation: _rotationController,
                 builder: (context, child) {
-                  return Transform.rotate(
-                    angle: _isPlaying ? _rotationController.value * 2 * 3.14159 : 0,
-                    child: child,
-                  );
+                  return Transform.rotate(angle: _isPlaying ? _rotationController.value * 2 * 3.14159 : 0, child: child);
                 },
                 child: Container(
                   width: 280,
                   height: 280,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _dominantColor.withOpacity(0.6),
-                        blurRadius: 60,
-                        spreadRadius: 15,
-                      ),
-                    ],
+                    boxShadow: [BoxShadow(color: _dominantColor.withOpacity(0.6), blurRadius: 60, spreadRadius: 15)],
                   ),
                   child: Stack(
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(140),
                         child: _stations[_currentIndex].artUrl != null
-                            ? Image.network(
-                                _stations[_currentIndex].artUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return _buildDefaultArtwork();
-                                },
-                              )
+                            ? Image.network(_stations[_currentIndex].artUrl!, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => _buildDefaultArtwork())
                             : _buildDefaultArtwork(),
                       ),
                       Center(
                         child: Container(
                           width: 60,
                           height: 60,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withOpacity(0.5),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 20,
-                              height: 20,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.5), border: Border.all(color: Colors.white.withOpacity(0.3), width: 2)),
+                          child: Center(child: Container(width: 20, height: 20, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white))),
                         ),
                       ),
                       if (_isBuffering)
                         Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withOpacity(0.6),
-                          ),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: _dominantColor,
-                              strokeWidth: 3,
-                            ),
-                          ),
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.6)),
+                          child: Center(child: CircularProgressIndicator(color: _dominantColor, strokeWidth: 3)),
                         ),
                     ],
                   ),
@@ -608,38 +519,16 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                 padding: const EdgeInsets.symmetric(horizontal: 40),
                 child: Column(
                   children: [
-                    Text(
-                      _stations[_currentIndex].name,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                    ),
+                    Text(_stations[_currentIndex].name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.2)),
                     if (_stations[_currentIndex].location != null) ...[
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            Icons.location_on_rounded,
-                            size: 18,
-                            color: _dominantColor.withOpacity(0.8),
-                          ),
+                          Icon(Icons.location_on_rounded, size: 18, color: _dominantColor.withOpacity(0.8)),
                           const SizedBox(width: 4),
                           Flexible(
-                            child: Text(
-                              _stations[_currentIndex].location!,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.white.withOpacity(0.7),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                            child: Text(_stations[_currentIndex].location!, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis, maxLines: 1),
                           ),
                         ],
                       ),
@@ -656,32 +545,13 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                       opacity: 0.5 + (_pulseController.value * 0.5),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _dominantColor.withOpacity(0.25),
-                          borderRadius: BorderRadius.circular(25),
-                          border: Border.all(
-                            color: _dominantColor.withOpacity(0.4),
-                            width: 1.5,
-                          ),
-                        ),
+                        decoration: BoxDecoration(color: _dominantColor.withOpacity(0.25), borderRadius: BorderRadius.circular(25), border: Border.all(color: _dominantColor.withOpacity(0.4), width: 1.5)),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.graphic_eq_rounded,
-                              color: _dominantColor,
-                              size: 18,
-                            ),
+                            Icon(Icons.graphic_eq_rounded, color: _dominantColor, size: 18),
                             const SizedBox(width: 10),
-                            Text(
-                              'Tocando agora',
-                              style: TextStyle(
-                                color: _dominantColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                            Text('Tocando agora', style: TextStyle(color: _dominantColor, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                           ],
                         ),
                       ),
@@ -694,17 +564,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildMaterialYouButton(
-                      icon: Icons.skip_previous_rounded,
-                      onPressed: _currentIndex > 0 && !_isBuffering ? _previousStation : null,
-                      size: 68,
-                    ),
+                    _buildMaterialYouButton(icon: Icons.skip_previous_rounded, onPressed: _currentIndex > 0 && !_isBuffering ? _previousStation : null, size: 68),
                     _buildMainPlayButton(),
-                    _buildMaterialYouButton(
-                      icon: Icons.skip_next_rounded,
-                      onPressed: _currentIndex < _stations.length - 1 && !_isBuffering ? _nextStation : null,
-                      size: 68,
-                    ),
+                    _buildMaterialYouButton(icon: Icons.skip_next_rounded, onPressed: _currentIndex < _stations.length - 1 && !_isBuffering ? _nextStation : null, size: 68),
                   ],
                 ),
               ),
@@ -718,33 +580,14 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
                     borderRadius: BorderRadius.circular(32),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
-                      decoration: BoxDecoration(
-                        color: _dominantColor.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(32),
-                        border: Border.all(
-                          color: _dominantColor.withOpacity(0.4),
-                          width: 2,
-                        ),
-                      ),
+                      decoration: BoxDecoration(color: _dominantColor.withOpacity(0.2), borderRadius: BorderRadius.circular(32), border: Border.all(color: _dominantColor.withOpacity(0.4), width: 2)),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            Icons.queue_music_rounded,
-                            size: 24,
-                            color: _dominantColor,
-                          ),
+                          Icon(Icons.queue_music_rounded, size: 24, color: _dominantColor),
                           const SizedBox(width: 12),
-                          Text(
-                            'Ver todas as estações',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: _dominantColor,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
+                          Text('Ver todas as estações', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _dominantColor, letterSpacing: 0.3)),
                         ],
                       ),
                     ),
@@ -759,13 +602,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     );
   }
 
-  Widget _buildMaterialYouButton({
-    required IconData icon,
-    required VoidCallback? onPressed,
-    required double size,
-  }) {
+  Widget _buildMaterialYouButton({required IconData icon, required VoidCallback? onPressed, required double size}) {
     final isEnabled = onPressed != null;
-    
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -775,29 +613,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: isEnabled 
-                ? _dominantColor.withOpacity(0.25)
-                : Colors.white.withOpacity(0.05),
+            color: isEnabled ? _dominantColor.withOpacity(0.25) : Colors.white.withOpacity(0.05),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: isEnabled 
-                  ? _dominantColor.withOpacity(0.5)
-                  : Colors.white.withOpacity(0.1),
-              width: 2.5,
-            ),
-            boxShadow: isEnabled ? [
-              BoxShadow(
-                color: _dominantColor.withOpacity(0.3),
-                blurRadius: 15,
-                spreadRadius: 1,
-              ),
-            ] : [],
+            border: Border.all(color: isEnabled ? _dominantColor.withOpacity(0.5) : Colors.white.withOpacity(0.1), width: 2.5),
+            boxShadow: isEnabled ? [BoxShadow(color: _dominantColor.withOpacity(0.3), blurRadius: 15, spreadRadius: 1)] : [],
           ),
-          child: Icon(
-            icon,
-            size: size * 0.45,
-            color: isEnabled ? _dominantColor : Colors.white.withOpacity(0.3),
-          ),
+          child: Icon(icon, size: size * 0.45, color: isEnabled ? _dominantColor : Colors.white.withOpacity(0.3)),
         ),
       ),
     );
@@ -806,18 +627,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Widget _buildMainPlayButton() {
     return GestureDetector(
       onTapDown: (_) {
-        if (!_isBuffering) {
-          _buttonScaleController.reverse();
-        }
+        if (!_isBuffering) _buttonScaleController.reverse();
       },
       onTapUp: (_) {
-        if (!_isBuffering) {
-          _buttonScaleController.forward();
-        }
+        if (!_isBuffering) _buttonScaleController.forward();
       },
-      onTapCancel: () {
-        _buttonScaleController.forward();
-      },
+      onTapCancel: () => _buttonScaleController.forward(),
       onTap: _isBuffering ? null : _togglePlayPause,
       child: ScaleTransition(
         scale: _buttonScaleController,
@@ -825,45 +640,17 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
           width: 95,
           height: 95,
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                _dominantColor,
-                _dominantColor.withOpacity(0.8),
-              ],
-            ),
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_dominantColor, _dominantColor.withOpacity(0.8)]),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: _dominantColor.withOpacity(0.5),
-              width: 3,
-            ),
+            border: Border.all(color: _dominantColor.withOpacity(0.5), width: 3),
             boxShadow: [
-              BoxShadow(
-                color: _dominantColor.withOpacity(0.6),
-                blurRadius: 30,
-                spreadRadius: 5,
-              ),
-              BoxShadow(
-                color: _dominantColor.withOpacity(0.3),
-                blurRadius: 60,
-                spreadRadius: 10,
-              ),
+              BoxShadow(color: _dominantColor.withOpacity(0.6), blurRadius: 30, spreadRadius: 5),
+              BoxShadow(color: _dominantColor.withOpacity(0.3), blurRadius: 60, spreadRadius: 10),
             ],
           ),
           child: _isBuffering
-              ? Padding(
-                  padding: const EdgeInsets.all(25),
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 3.5,
-                  ),
-                )
-              : Icon(
-                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  size: 50,
-                  color: Colors.white,
-                ),
+              ? Padding(padding: const EdgeInsets.all(25), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3.5))
+              : Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 50, color: Colors.white),
         ),
       ),
     );
@@ -871,22 +658,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
   Widget _buildDefaultArtwork() {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _dominantColor,
-            _dominantColor.withOpacity(0.6),
-          ],
-        ),
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.radio,
-          size: 120,
-          color: Colors.white,
-        ),
-      ),
+      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_dominantColor, _dominantColor.withOpacity(0.6)])),
+      child: const Center(child: Icon(Icons.radio, size: 120, color: Colors.white)),
     );
   }
+}
