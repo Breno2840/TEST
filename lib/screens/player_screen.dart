@@ -20,7 +20,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   int _currentIndex = 0;
   bool _isPlaying = false;
   bool _isLoading = true;
-  bool _isBuffering = false; // Separado do isPlaying
+  bool _isBuffering = false;
   Color _dominantColor = const Color(0xFF6C63FF);
   Color _backgroundColor = const Color(0xFF0A0E27);
 
@@ -257,13 +257,17 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     }
   }
 
-  Future<void> _pauseStation() async {
+  Future<void> _stopStation() async {
     if (_isBuffering) return;
 
-    print('⏸️ Pausando rádio...');
+    print('⏹️ Parando rádio...');
+    
+    setState(() {
+      _isBuffering = true;
+    });
     
     try {
-      await _audioPlayer.pause();
+      await _audioPlayer.stop();
       
       if (mounted) {
         setState(() {
@@ -273,9 +277,26 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       }
       _rotationController.stop();
       
-      print('✅ Rádio pausada');
+      print('✅ Rádio parada');
     } catch (e) {
-      print('❌ Erro ao pausar: $e');
+      print('❌ Erro ao parar: $e');
+      if (mounted) {
+        setState(() {
+          _isBuffering = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _togglePlayPause() async {
+    if (_isBuffering) return;
+
+    if (_isPlaying) {
+      // Se está tocando, PARA completamente (não pausa)
+      await _stopStation();
+    } else {
+      // Se está parado, inicia
+      await _playStation();
     }
   }
 
@@ -797,9 +818,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       onTapCancel: () {
         _buttonScaleController.forward();
       },
-      onTap: _isBuffering 
-          ? null 
-          : (_isPlaying ? _pauseStation : _playStation),
+      onTap: _isBuffering ? null : _togglePlayPause,
       child: ScaleTransition(
         scale: _buttonScaleController,
         child: Container(
