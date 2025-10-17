@@ -52,31 +52,39 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // Escuta o estado REAL do player
+    // Escuta o estado do player de forma mais precisa
     _audioPlayer.playerStateStream.listen((state) {
-      if (mounted) {
-        final playing = state.playing;
-        final processingState = state.processingState;
+      if (!mounted) return;
+      
+      final playing = state.playing;
+      final processingState = state.processingState;
+      
+      print('🔊 Player State - Playing: $playing, ProcessingState: $processingState');
+      
+      // Atualiza o estado imediatamente
+      setState(() {
+        _isPlaying = playing;
+        _isBuffering = processingState == ProcessingState.loading || 
+                      processingState == ProcessingState.buffering;
         
-        setState(() {
-          _isPlaying = playing;
-          _isBuffering = processingState == ProcessingState.loading || 
-                        processingState == ProcessingState.buffering;
-          
-          if (playing && processingState == ProcessingState.ready) {
+        // Controla a rotação do disco
+        if (playing && processingState == ProcessingState.ready) {
+          if (!_rotationController.isAnimating) {
             _rotationController.repeat();
-          } else if (!playing) {
+          }
+        } else {
+          if (_rotationController.isAnimating) {
             _rotationController.stop();
           }
-        });
-      }
+        }
+      });
     });
 
     // Escuta erros
     _audioPlayer.playbackEventStream.listen(
       (event) {},
       onError: (Object e, StackTrace stackTrace) {
-        print('Erro no stream: $e');
+        print('❌ Erro no stream: $e');
         if (mounted) {
           setState(() {
             _isBuffering = false;
@@ -210,6 +218,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     setState(() {
       _isBuffering = true;
+      _isPlaying = false;
     });
 
     try {
@@ -262,29 +271,20 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     print('⏹️ Parando rádio...');
     
+    // ATUALIZA A UI IMEDIATAMENTE ANTES DE PARAR
     setState(() {
-      _isBuffering = true;
+      _isPlaying = false;
+      _isBuffering = false;
     });
+    
+    // Para a rotação imediatamente
+    _rotationController.stop();
     
     try {
       await _audioPlayer.stop();
-      
-      if (mounted) {
-        setState(() {
-          _isPlaying = false;
-          _isBuffering = false;
-        });
-      }
-      _rotationController.stop();
-      
       print('✅ Rádio parada');
     } catch (e) {
       print('❌ Erro ao parar: $e');
-      if (mounted) {
-        setState(() {
-          _isBuffering = false;
-        });
-      }
     }
   }
 
@@ -292,7 +292,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     if (_isBuffering) return;
 
     if (_isPlaying) {
-      // Se está tocando, PARA completamente (não pausa)
+      // Se está tocando, PARA completamente
       await _stopStation();
     } else {
       // Se está parado, inicia
@@ -890,4 +890,3 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       ),
     );
   }
-}
