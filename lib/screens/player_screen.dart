@@ -18,14 +18,11 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   final AudioPlayer _audioPlayer = AudioPlayer();
   List<RadioStation> _stations = [];
   int _currentIndex = 0;
-  bool _isPlaying = false;
+  bool _isPlaying = false; // Este é o estado que iremos controlar manualmente
   bool _isLoading = true;
   bool _isBuffering = false;
   Color _dominantColor = const Color(0xFF6C63FF);
   Color _backgroundColor = const Color(0xFF0A0E27);
-
-  // Nova flag para controlar se estamos parando o áudio
-  bool _isStopping = false;
 
   late AnimationController _rotationController;
   late AnimationController _pulseController;
@@ -55,30 +52,27 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
+    // ✅ AGORA OUVIMOS O STREAM, MAS APENAS PARA CONTROLE DE BUFFERING E ERROS
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
 
-      // Ignorar atualizações se estivermos no processo de parar
-      if (_isStopping) return;
-
-      final playing = state.playing;
       final processingState = state.processingState;
 
       setState(() {
-        _isPlaying = playing;
         _isBuffering = processingState == ProcessingState.loading ||
                       processingState == ProcessingState.buffering;
-
-        if (playing && processingState == ProcessingState.ready) {
-          if (!_rotationController.isAnimating) {
-            _rotationController.repeat();
-          }
-        } else {
-          if (_rotationController.isAnimating) {
-            _rotationController.stop();
-          }
-        }
       });
+
+      // ✅ CONTROLE DA ANIMAÇÃO DO CD BASEADO NO ESTADO REAL DO PLAYER
+      if (state.playing && processingState == ProcessingState.ready) {
+        if (!_rotationController.isAnimating) {
+          _rotationController.repeat();
+        }
+      } else {
+        if (_rotationController.isAnimating) {
+          _rotationController.stop();
+        }
+      }
     });
 
     _audioPlayer.playbackEventStream.listen(
@@ -87,7 +81,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         if (mounted) {
           setState(() {
             _isBuffering = false;
-            _isPlaying = false;
+            _isPlaying = false; // Desativar o ícone também
           });
           _rotationController.stop();
         }
@@ -225,12 +219,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
       if (mounted) {
         setState(() {
-          _isPlaying = true;
+          _isPlaying = true; // ✅ ATUALIZAR ESTADO VISUAL
           _isBuffering = false;
         });
       }
 
-      _rotationController.repeat();
+      // A animação do CD é controlada pelo stream, não aqui
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -253,12 +247,8 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     }
   }
 
-  // ✅ NOVA VERSÃO CORRIGIDA
   Future<void> _stopStation() async {
-    if (_isBuffering || _isStopping) return;
-
-    // Ativar a flag para impedir atualizações do playerStateStream
-    _isStopping = true;
+    if (_isBuffering) return;
 
     // Parar a animação imediatamente
     _rotationController.stop();
@@ -269,17 +259,12 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       print('Erro ao parar: $e');
     }
 
-    // Atualizar o estado após o áudio ser realmente parado
+    // Atualizar o estado visual imediatamente
     if (mounted) {
       setState(() {
-        _isPlaying = false;
+        _isPlaying = false; // ✅ FORÇAR ESTADO VISUAL PARA PARADO
         _isBuffering = false;
-        // Desativar a flag
-        _isStopping = false;
       });
-    } else {
-      // Se o widget não estiver mais montado, ainda precisamos desativar a flag
-      _isStopping = false;
     }
   }
 
