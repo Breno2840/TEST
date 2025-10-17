@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # ✨ Gerenciamento de estado
+  provider: ^6.1.2 # <-- ADICIONADO
+
   # 🎧 Áudio e serviços
   just_audio: ^0.9.36
   audio_service: ^0.18.12
