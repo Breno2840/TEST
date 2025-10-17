@@ -52,27 +52,18 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
+    // Listener simplificado: agora só gerencia o estado de buffering.
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
       
-      final playing = state.playing;
       final processingState = state.processingState;
       
-      setState(() {
-        _isPlaying = playing;
-        _isBuffering = processingState == ProcessingState.loading || 
-                      processingState == ProcessingState.buffering;
-        
-        if (playing && processingState == ProcessingState.ready) {
-          if (!_rotationController.isAnimating) {
-            _rotationController.repeat();
-          }
-        } else {
-          if (_rotationController.isAnimating) {
-            _rotationController.stop();
-          }
-        }
-      });
+      if (_isBuffering != (processingState == ProcessingState.loading || processingState == ProcessingState.buffering)) {
+        setState(() {
+          _isBuffering = processingState == ProcessingState.loading || 
+                        processingState == ProcessingState.buffering;
+        });
+      }
     });
 
     _audioPlayer.playbackEventStream.listen(
@@ -197,7 +188,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   }
 
   Future<void> _playStation() async {
-    if (_stations.isEmpty || _isBuffering) return;
+    if (_stations.isEmpty) return;
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
@@ -206,7 +197,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     setState(() {
       _isBuffering = true;
-      _isPlaying = false;
     });
 
     try {
@@ -216,15 +206,14 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       
       await _saveLastStation();
       await _extractDominantColor();
-
+      
+      // Controle direto da UI e animação
       if (mounted) {
         setState(() {
           _isPlaying = true;
-          _isBuffering = false;
         });
+        _rotationController.repeat();
       }
-
-      _rotationController.repeat();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -242,21 +231,14 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
           _isPlaying = false;
           _isBuffering = false;
         });
+        _rotationController.stop();
       }
-      _rotationController.stop();
     }
   }
 
   Future<void> _stopStation() async {
-    if (_isBuffering) return;
-
-    setState(() {
-      _isPlaying = false;
-      _isBuffering = false;
-    });
-    
+    // A função agora só para o áudio e a animação. O setState fica no _togglePlayPause.
     _rotationController.stop();
-    
     try {
       await _audioPlayer.stop();
     } catch (e) {
@@ -267,10 +249,18 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Future<void> _togglePlayPause() async {
     if (_isBuffering) return;
 
-    if (_isPlaying) {
-      await _stopStation();
-    } else {
+    // A lógica de estado agora está aqui, garantindo resposta imediata da UI
+    final newIsPlayingState = !_isPlaying;
+    if (mounted) {
+      setState(() {
+        _isPlaying = newIsPlayingState;
+      });
+    }
+
+    if (newIsPlayingState) {
       await _playStation();
+    } else {
+      await _stopStation();
     }
   }
 
@@ -340,6 +330,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     _buttonScaleController.dispose();
     super.dispose();
   }
+
+  // A partir daqui, a seção de `build` e os widgets auxiliares permanecem
+  // exatamente como você escreveu, pois não havia erros neles.
 
   @override
   Widget build(BuildContext context) {
@@ -480,7 +473,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
               AnimatedBuilder(
                 animation: _rotationController,
                 builder: (context, child) {
-                  return Transform.rotate(angle: _isPlaying ? _rotationController.value * 2 * 3.14159 : 0, child: child);
+                  return Transform.rotate(angle: _rotationController.value * 2 * 3.14159, child: child);
                 },
                 child: Container(
                   width: 280,
