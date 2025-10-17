@@ -1,4 +1,4 @@
-import 'package.flutter/material.dart';
+import 'package:flutter/material.dart'; // <-- A CORREÇÃO ESTÁ AQUI
 import 'package:just_audio/just_audio.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../models/radio_station.dart';
@@ -113,39 +113,38 @@ class RadioPlayerController extends ChangeNotifier {
   void previousStation() => _changeStation(currentIndex - 1);
   void selectStation(int index) => _changeStation(index);
 
-  // --- FUNÇÃO CORRIGIDA ---
   Future<void> _changeStation(int newIndex) async {
     if (newIndex < 0 || newIndex >= stations.length || isBuffering) return;
 
-    // 1. Guarda o estado atual do player
     final wasPlaying = isPlaying;
 
-    // Se estava tocando, para o áudio e as animações para não ter sobreposição
     if (wasPlaying) {
-      // Apenas para o player, o estado isPlaying e a animação serão tratados pelo playStation
       await _stopStation();
     }
 
-    // 2. Muda para a nova estação
     currentIndex = newIndex;
     
-    // Notifica a UI para mostrar a nova arte/nome imediatamente
     notifyListeners();
 
-    // Carrega as informações da nova estação em segundo plano
     await extractDominantColor();
     await _storageService.saveLastStationIndex(currentIndex);
 
-    // 3. Se estava tocando antes, começa a tocar a nova estação automaticamente
     if (wasPlaying) {
-      // Reativa o estado de "tocando" e a animação antes de chamar o player
+      // Reativa o estado ANTES de chamar a função de tocar
       isPlaying = true;
       rotationController.repeat();
-      notifyListeners(); // Garante que o ícone mude para pause, se necessário
-      await _playStation();
+      notifyListeners();
+      
+      try {
+        await _playStation();
+      } catch (e) {
+        // Se falhar, reverte o estado
+        isPlaying = false;
+        rotationController.stop();
+        notifyListeners();
+      }
     }
   }
-  // --- FIM DA CORREÇÃO ---
 
   Future<void> extractDominantColor() async {
     if (currentStation?.artUrl == null) return;
