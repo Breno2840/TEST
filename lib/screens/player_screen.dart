@@ -52,7 +52,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // Listener simplificado: agora só gerencia o estado de buffering.
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
       
@@ -186,9 +185,11 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       print('Error extracting color: $e');
     }
   }
+  
+  // --- INÍCIO DAS FUNÇÕES CORRIGIDAS ---
 
   Future<void> _playStation() async {
-    if (_stations.isEmpty) return;
+    if (_stations.isEmpty || _isBuffering) return;
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
@@ -206,11 +207,11 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       
       await _saveLastStation();
       await _extractDominantColor();
-      
-      // Controle direto da UI e animação
+
       if (mounted) {
         setState(() {
           _isPlaying = true;
+          _isBuffering = false;
         });
         _rotationController.repeat();
       }
@@ -237,10 +238,16 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   }
 
   Future<void> _stopStation() async {
-    // A função agora só para o áudio e a animação. O setState fica no _togglePlayPause.
-    _rotationController.stop();
+    if (_isBuffering) return;
+    
     try {
       await _audioPlayer.stop();
+      if(mounted) {
+        setState(() {
+          _isPlaying = false;
+        });
+        _rotationController.stop();
+      }
     } catch (e) {
       print('Erro ao parar: $e');
     }
@@ -249,20 +256,14 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Future<void> _togglePlayPause() async {
     if (_isBuffering) return;
 
-    // A lógica de estado agora está aqui, garantindo resposta imediata da UI
-    final newIsPlayingState = !_isPlaying;
-    if (mounted) {
-      setState(() {
-        _isPlaying = newIsPlayingState;
-      });
-    }
-
-    if (newIsPlayingState) {
-      await _playStation();
-    } else {
+    if (_isPlaying) {
       await _stopStation();
+    } else {
+      await _playStation();
     }
   }
+
+  // --- FIM DAS FUNÇÕES CORRIGIDAS ---
 
   void _nextStation() {
     if (_currentIndex < _stations.length - 1 && !_isBuffering) {
@@ -330,9 +331,6 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
     _buttonScaleController.dispose();
     super.dispose();
   }
-
-  // A partir daqui, a seção de `build` e os widgets auxiliares permanecem
-  // exatamente como você escreveu, pois não havia erros neles.
 
   @override
   Widget build(BuildContext context) {
