@@ -18,7 +18,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   final AudioPlayer _audioPlayer = AudioPlayer();
   List<RadioStation> _stations = [];
   int _currentIndex = 0;
-  bool _isPlaying = false; // Este é o estado que iremos controlar manualmente
+  bool _isPlaying = false; // Estado visual controlado manualmente
   bool _isLoading = true;
   bool _isBuffering = false;
   Color _dominantColor = const Color(0xFF6C63FF);
@@ -52,7 +52,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // ✅ AGORA OUVIMOS O STREAM, MAS APENAS PARA CONTROLE DE BUFFERING E ERROS
+    // ✅ OUVIMOS O STREAM APENAS PARA DETECTAR ERROS E BUFFERING
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
 
@@ -81,7 +81,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         if (mounted) {
           setState(() {
             _isBuffering = false;
-            _isPlaying = false; // Desativar o ícone também
+            _isPlaying = false; // Forçar estado visual para parado
           });
           _rotationController.stop();
         }
