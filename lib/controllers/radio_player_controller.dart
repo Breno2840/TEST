@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package.flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../models/radio_station.dart';
@@ -60,25 +60,19 @@ class RadioPlayerController extends ChangeNotifier {
     });
   }
 
-  // --- LÓGICA PRINCIPAL CORRIGIDA ---
-
   Future<void> togglePlayPause() async {
     if (isBuffering) return;
 
-    // 1. Inverte o estado da UI imediatamente
     isPlaying = !isPlaying;
 
-    // 2. Sincroniza as animações com o novo estado
     if (isPlaying) {
       rotationController.repeat();
     } else {
       rotationController.stop();
     }
     
-    // 3. Notifica a UI para mudar o ícone e aplicar a animação AGORA
     notifyListeners();
 
-    // 4. Executa a ação de áudio em segundo plano
     try {
       if (isPlaying) {
         await _playStation();
@@ -86,9 +80,8 @@ class RadioPlayerController extends ChangeNotifier {
         await _stopStation();
       }
     } catch (e) {
-      // Se algo deu errado, desfaz o estado
       print("Erro ao tocar/parar. Desfazendo estado.");
-      isPlaying = !isPlaying; // Reverte para o estado anterior
+      isPlaying = !isPlaying;
       rotationController.stop();
       notifyListeners();
     }
@@ -105,7 +98,6 @@ class RadioPlayerController extends ChangeNotifier {
       await audioPlayer.play();
     } catch (e) {
       print("Erro ao tocar estação: $e");
-      // Lança o erro para ser pego no togglePlayPause e reverter o estado
       throw e; 
     } finally {
       isBuffering = false;
@@ -117,32 +109,43 @@ class RadioPlayerController extends ChangeNotifier {
     await audioPlayer.stop();
   }
   
-  // --- FIM DA CORREÇÃO ---
-
   void nextStation() => _changeStation(currentIndex + 1);
   void previousStation() => _changeStation(currentIndex - 1);
   void selectStation(int index) => _changeStation(index);
 
+  // --- FUNÇÃO CORRIGIDA ---
   Future<void> _changeStation(int newIndex) async {
     if (newIndex < 0 || newIndex >= stations.length || isBuffering) return;
 
-    currentIndex = newIndex;
-    
-    if(isPlaying) {
-      // Se já estava tocando, para a música e animação antes de mudar
+    // 1. Guarda o estado atual do player
+    final wasPlaying = isPlaying;
+
+    // Se estava tocando, para o áudio e as animações para não ter sobreposição
+    if (wasPlaying) {
+      // Apenas para o player, o estado isPlaying e a animação serão tratados pelo playStation
       await _stopStation();
-      rotationController.stop();
-      isPlaying = false;
     }
 
-    notifyListeners(); // Mostra a nova arte do álbum
+    // 2. Muda para a nova estação
+    currentIndex = newIndex;
+    
+    // Notifica a UI para mostrar a nova arte/nome imediatamente
+    notifyListeners();
 
+    // Carrega as informações da nova estação em segundo plano
     await extractDominantColor();
     await _storageService.saveLastStationIndex(currentIndex);
 
-    // Opcional: Se quiser que comece a tocar automaticamente ao mudar de estação
-    // await togglePlayPause();
+    // 3. Se estava tocando antes, começa a tocar a nova estação automaticamente
+    if (wasPlaying) {
+      // Reativa o estado de "tocando" e a animação antes de chamar o player
+      isPlaying = true;
+      rotationController.repeat();
+      notifyListeners(); // Garante que o ícone mude para pause, se necessário
+      await _playStation();
+    }
   }
+  // --- FIM DA CORREÇÃO ---
 
   Future<void> extractDominantColor() async {
     if (currentStation?.artUrl == null) return;
