@@ -18,7 +18,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   final AudioPlayer _audioPlayer = AudioPlayer();
   List<RadioStation> _stations = [];
   int _currentIndex = 0;
-  bool _isPlaying = false; // Estado visual controlado manualmente
+  bool _isPlaying = false;
   bool _isLoading = true;
   bool _isBuffering = false;
   Color _dominantColor = const Color(0xFF6C63FF);
@@ -52,27 +52,27 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       _loadLastStation();
     });
 
-    // ✅ OUVIMOS O STREAM APENAS PARA DETECTAR ERROS E BUFFERING
     _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
-
+      
+      final playing = state.playing;
       final processingState = state.processingState;
-
+      
       setState(() {
-        _isBuffering = processingState == ProcessingState.loading ||
+        _isPlaying = playing;
+        _isBuffering = processingState == ProcessingState.loading || 
                       processingState == ProcessingState.buffering;
+        
+        if (playing && processingState == ProcessingState.ready) {
+          if (!_rotationController.isAnimating) {
+            _rotationController.repeat();
+          }
+        } else {
+          if (_rotationController.isAnimating) {
+            _rotationController.stop();
+          }
+        }
       });
-
-      // ✅ CONTROLE DA ANIMAÇÃO DO CD BASEADO NO ESTADO REAL DO PLAYER
-      if (state.playing && processingState == ProcessingState.ready) {
-        if (!_rotationController.isAnimating) {
-          _rotationController.repeat();
-        }
-      } else {
-        if (_rotationController.isAnimating) {
-          _rotationController.stop();
-        }
-      }
     });
 
     _audioPlayer.playbackEventStream.listen(
@@ -81,7 +81,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
         if (mounted) {
           setState(() {
             _isBuffering = false;
-            _isPlaying = false; // Forçar estado visual para parado
+            _isPlaying = false;
           });
           _rotationController.stop();
         }
@@ -101,9 +101,9 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-
+        
         List<RadioStation> loadedStations = [];
-
+        
         if (data is List) {
           loadedStations = data
               .where((station) => station['ativo'] == true)
@@ -122,7 +122,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
             }
           }
         }
-
+        
         if (mounted) {
           setState(() {
             _stations = loadedStations;
@@ -147,11 +147,11 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
   Future<void> _loadLastStation() async {
     if (_stations.isEmpty) return;
-
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastIndex = prefs.getInt('lastStation') ?? 0;
-
+      
       if (lastIndex >= 0 && lastIndex < _stations.length) {
         if (mounted) {
           setState(() {
@@ -201,7 +201,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
 
     final station = _stations[_currentIndex];
     final stationUrl = station.streamUrl;
-
+    
     if (stationUrl.isEmpty) return;
 
     setState(() {
@@ -213,18 +213,18 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
       await _audioPlayer.stop();
       await _audioPlayer.setUrl(stationUrl);
       await _audioPlayer.play();
-
+      
       await _saveLastStation();
       await _extractDominantColor();
 
       if (mounted) {
         setState(() {
-          _isPlaying = true; // ✅ ATUALIZAR ESTADO VISUAL
+          _isPlaying = true;
           _isBuffering = false;
         });
       }
 
-      // A animação do CD é controlada pelo stream, não aqui
+      _rotationController.repeat();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -237,7 +237,7 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
             duration: const Duration(seconds: 2),
           ),
         );
-
+        
         setState(() {
           _isPlaying = false;
           _isBuffering = false;
@@ -250,24 +250,19 @@ class _RadioPlayerScreenState extends State<RadioPlayerScreen> with TickerProvid
   Future<void> _stopStation() async {
     if (_isBuffering) return;
 
-    // Parar a animação imediatamente
+    setState(() {
+      _isPlaying = false;
+      _isBuffering = false;
+    });
+    
     _rotationController.stop();
-
+    
     try {
       await _audioPlayer.stop();
     } catch (e) {
       print('Erro ao parar: $e');
     }
-
-    // Atualizar o estado visual imediatamente
-    if (mounted) {
-      setState(() {
-        _isPlaying = false; // ✅ FORÇAR ESTADO VISUAL PARA PARADO
-        _isBuffering = false;
-      });
-    }
   }
-
 
   Future<void> _togglePlayPause() async {
     if (_isBuffering) return;
