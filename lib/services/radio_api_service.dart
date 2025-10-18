@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../models/radio_station.dart';
 
 class RadioApiService {
-  final _baseUrl = 'https://late-tree-7ba3.mandy2a2839.workers.dev/';
+  final _baseUrl = 'https://radioapp-b4746-default-rtdb.firebaseio.com/.json';
 
   Future<List<RadioStation>> fetchStations() async {
     try {
